@@ -1,66 +1,71 @@
-<p align="center"><a href="https://laravel.com" target="_blank"><img src="https://raw.githubusercontent.com/laravel/art/master/logo-lockup/5%20SVG/2%20CMYK/1%20Full%20Color/laravel-logolockup-cmyk-red.svg" width="400" alt="Laravel Logo"></a></p>
+# temp
 
-<p align="center">
-<a href="https://github.com/laravel/framework/actions"><img src="https://github.com/laravel/framework/workflows/tests/badge.svg" alt="Build Status"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/dt/laravel/framework" alt="Total Downloads"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/v/laravel/framework" alt="Latest Stable Version"></a>
-<a href="https://packagist.org/packages/laravel/framework"><img src="https://img.shields.io/packagist/l/laravel/framework" alt="License"></a>
-</p>
+Small Laravel REST API that stores per-player waste data as JSON, plus a folder of Unity C# scripts that call it. The Unity side is scripts only, not a full Unity project.
 
-## About Laravel
+## What is in it
 
-Laravel is a web application framework with expressive, elegant syntax. We believe development must be an enjoyable and creative experience to be truly fulfilling. Laravel takes the pain out of development by easing common tasks used in many web projects, such as:
+`app/`, `routes/`, `config/` and the rest of the Laravel tree are the standard Laravel 12 skeleton with one addition, `PlayerWasteController`, which backs four routes under `/api/v1`. The welcome page in `resources/views` is still the default.
 
-- [Simple, fast routing engine](https://laravel.com/docs/routing).
-- [Powerful dependency injection container](https://laravel.com/docs/container).
-- Multiple back-ends for [session](https://laravel.com/docs/session) and [cache](https://laravel.com/docs/cache) storage.
-- Expressive, intuitive [database ORM](https://laravel.com/docs/eloquent).
-- Database agnostic [schema migrations](https://laravel.com/docs/migrations).
-- [Robust background job processing](https://laravel.com/docs/queues).
-- [Real-time event broadcasting](https://laravel.com/docs/broadcasting).
+`Unity/` has seven `.cs` files and nothing else: no `Assets/`, `ProjectSettings/`, scenes or prefabs, so the Unity version is not recorded anywhere and the scripts cannot be opened as a project as they are.
 
-Laravel is accessible, powerful, and provides tools required for large, robust applications.
+## Stack
 
-## Learning Laravel
+- PHP ^8.2, Laravel ^12.0, Laravel Sanctum ^4.0 (installed, but no route uses it)
+- PHPUnit ^11.5 (only the two default example tests)
+- Vite 6 and Tailwind 4 in `package.json`, used only by the default welcome page
+- Unity scripts using `UnityEngine.Networking` and `JsonUtility`
 
-Laravel has the most extensive and thorough [documentation](https://laravel.com/docs) and video tutorial library of all modern web application frameworks, making it a breeze to get started with the framework.
+Checked with PHP 8.3.
 
-You may also try the [Laravel Bootcamp](https://bootcamp.laravel.com), where you will be guided through building a modern Laravel application from scratch.
+## Running the API
 
-If you don't feel like reading, [Laracasts](https://laracasts.com) can help. Laracasts contains thousands of video tutorials on a range of topics including Laravel, modern PHP, unit testing, and JavaScript. Boost your skills by digging into our comprehensive video library.
+```
+composer install
+cp .env.example .env
+php artisan key:generate
+php artisan serve
+```
 
-## Laravel Sponsors
+The API is served at `http://127.0.0.1:8000/api/v1`, which is the address hard-coded in the Unity scripts. The waste routes read and write a JSON file and do not use the database. `.env.example` selects SQLite for sessions, cache and queue, which only matters for the default Laravel pages and the queue/cache tables.
 
-We would like to extend our thanks to the following sponsors for funding Laravel development. If you are interested in becoming a sponsor, please visit the [Laravel Partners program](https://partners.laravel.com).
+```
+php artisan test
+```
 
-### Premium Partners
+## API
 
-- **[Vehikl](https://vehikl.com/)**
-- **[Tighten Co.](https://tighten.co)**
-- **[WebReinvent](https://webreinvent.com/)**
-- **[Kirschbaum Development Group](https://kirschbaumdevelopment.com)**
-- **[64 Robots](https://64robots.com)**
-- **[Curotec](https://www.curotec.com/services/technologies/laravel/)**
-- **[Cyber-Duck](https://cyber-duck.co.uk)**
-- **[DevSquad](https://devsquad.com/hire-laravel-developers)**
-- **[Jump24](https://jump24.co.uk)**
-- **[Redberry](https://redberry.international/laravel/)**
-- **[Active Logic](https://activelogic.com)**
-- **[byte5](https://byte5.de)**
-- **[OP.GG](https://op.gg)**
+| Method | Path | Body | Result |
+| --- | --- | --- | --- |
+| GET | `/waste/{player_id}` | | the player, or 404 |
+| POST | `/waste` | `player_id` (string), `waste_quants` (number), `rat_count` (integer) | 201 with the record, 400 if the id exists |
+| PUT | `/waste/{player_id}` | `waste_quants` and/or `rat_count` | the updated record, or 404 |
+| DELETE | `/waste/{player_id}` | | 204, or 404 |
 
-## Contributing
+Send `Accept: application/json` to get JSON validation errors. Records look like `{"player_id": "p1", "waste_quants": 3.5, "rat_count": 1}`.
 
-Thank you for considering contributing to the Laravel framework! The contribution guide can be found in the [Laravel documentation](https://laravel.com/docs/contributions).
+Storage details: the controller checks for `player_waste.json` with the `Storage` facade (which resolves to `storage/app/private/` in Laravel 12) but reads and writes `storage/app/player_waste.json` directly. The data file is therefore created at `storage/app/player_waste.json` on the first POST, and a placeholder file with an empty players list is created in `storage/app/private/`. Neither file is committed.
 
-## Code of Conduct
+## Unity scripts
 
-In order to ensure that the Laravel community is welcoming to all, please review and abide by the [Code of Conduct](https://laravel.com/docs/contributions#code-of-conduct).
+| File | What it does |
+| --- | --- |
+| `ApiClient.cs` | Thin wrapper over `UnityWebRequest` with coroutine `Get`, `Post`, `Put` and `Delete` against the base URL. |
+| `Player.cs` | Serializable class with `player_id`, `waste_quants` and `rat_count`, matching the API fields. |
+| `GameManager.cs` | Singleton. On start it loads `player123` from the API and creates it if the request fails. `UpdateWaste(amount)` adds to `waste_quants` and PUTs the player. |
+| `Engine.prefab.cs` | `Engine` component. Spawns a player prefab and up to 5 chef prefabs (random position within 10 units on x and z), loads or creates `player123`, has a Player ID input and select button, and lowers `waste_quants` while the player is within 2 units of a chef. |
+| `ChefAI.cs` | Chefs patrol back and forth on the x axis (`patrolRange` 5, `patrolSpeed` 2). Within 2 units of the player they call `GameManager.UpdateWaste(-0.1f)`. |
+| `PlayerMovement.cs` | Moves the player on the x/z plane with the `Horizontal` and `Vertical` axes (WASD or arrow keys with Unity's default input settings), `moveSpeed` 5. |
+| `CharacterSelection.cs` | UI script: type a player id, press the button, load that player from the API and store it in `GameManager`. Also has a `CreateNewPlayer` method. |
 
-## Security Vulnerabilities
+So the only mechanic the scripts show is waste going down while the player stands near a chef, with the value saved to the backend. `rat_count` is stored and sent but nothing in the scripts changes it.
 
-If you discover a security vulnerability within Laravel, please send an e-mail to Taylor Otwell via [taylor@laravel.com](mailto:taylor@laravel.com). All security vulnerabilities will be promptly addressed.
+## Known gaps
 
-## License
-
-The Laravel framework is open-sourced software licensed under the [MIT license](https://opensource.org/licenses/MIT).
+- Unity project files are missing, so the scripts have never been verified here.
+- `CharacterSelection.cs` assigns the private `GameManager.currentPlayer` and calls the private `GameManager.CreatePlayer`, which would not compile.
+- `Engine.prefab.cs` declares class `Engine`; Unity expects the file name to match the class name for components.
+- `Engine` and `GameManager` both load or create `player123` and both implement waste updates, so they overlap.
+- `ChefAI` and `Engine.ManageWaste` send a PUT every frame while the player is near a chef. `GameManager.UpdateWaste` does not clamp at zero.
+- `Engine.OnDestroy` calls `RemovePlayer`, which deletes the player's record from the API.
+- No authentication on the API, and no locking on the JSON file.
+- The Laravel workflows in `.github/workflows` trigger on `master` and `*.x` branches; the default branch here is `main`.
